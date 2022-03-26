@@ -10,7 +10,7 @@ Check: chrome://tracing/
 # So?
 
 This simple profiler for C++ allows you to quickly have some basic profiling data. 
-You'll be able to see your function calls in a timeline, their execution time, process and thread IDs and you can add any argument you mey like to profiling calls.
+You'll be able to see your function calls in a timeline, their execution time, process and thread IDs and you can add any argument you may like to profiling calls.
 It outputs a json and all you have to do is drop it in the tracing tool, using the link above.
 
 It's very basic, but can be extended.
