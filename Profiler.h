@@ -5,6 +5,9 @@
 #include <map>
 #include <optional>
 #include <sstream>
+#include <queue>
+#include <condition_variable>
+#include <mutex>
 
 struct ProfileEventInfo
 {
@@ -18,7 +21,8 @@ struct ProfileEventInfo
 	std::map<std::string, std::string> Args;
 
 	std::optional<long long> TimeDuration;
-	std::optional<char> Scope;
+	std::optional<char> Scope; // Used for instant event
+	std::optional<std::uintptr_t> Id; //Used for custom event
 
 };
 
@@ -52,7 +56,7 @@ private:
 	}
 	int m_counter = 0;
 	std::string m_currentKey;
-	
+
 
 };
 
@@ -61,15 +65,23 @@ class ScopeEvent : public ProfileEvent
 public:
 	ScopeEvent(const char* name);
 	~ScopeEvent();
+};
 
+class CustomEvent : public ProfileEvent
+{
+public:
+	CustomEvent(const char* name, bool async = false);
+	~CustomEvent();
 private:
-	std::chrono::high_resolution_clock::time_point m_start;
+	bool m_isAsync;
 };
 
 
 class InstantEvent : public ProfileEvent
 {
 public:
+	friend class Profiler;
+
 	InstantEvent(const char* name);
 	~InstantEvent();
 };
@@ -78,17 +90,35 @@ class Profiler
 {
 public:
 	static Profiler& Instance();
-
-	void StartSession(const std::string& sessionName);
+	~Profiler();
+	void StartSession(const std::string& sessionName = "Profile");
 	void EndSession();
 	void WriteInfo(const ProfileEventInfo& info);
 
+	CustomEvent* StartCustomAsyncEvent(const std::string& eventName);
+	void EndCustomAsyncEvent(const std::string& eventName);
+	CustomEvent* GetCustomAsyncEvent(const std::string& eventName);
+
+	CustomEvent* StartCustomEvent(const std::string& eventName);
+	CustomEvent* GetCustomEvent(const std::string& eventName);
+	void EndCustomEvent(const std::string& eventName);
+
 private:
 	static std::unique_ptr<Profiler> m_instance;
-	std::ofstream m_outStream;
+
+	std::map<std::string, CustomEvent*> m_customAsyncEvents; //In a separate map, as we need to lock if events are started/ended in different threads
+	std::map<std::string, CustomEvent*> m_customEvents;
+	void ThreadJob(std::string sessionName);
+
 	bool m_isSessionActive;
 	bool m_writeComma = false;
-	
+	bool m_threadRunning = false;
+	std::unique_ptr<std::thread> m_thread; // Writing thread
+	std::queue< ProfileEventInfo> m_eventQueue; // List of events to write
+	std::mutex m_outstreamMutex; // Used to lock list of events to write
+	std::mutex m_asyncEventMapMutex; // Used to lock the map of async events
+	std::condition_variable m_waitCondition; // Synchronize the list of events
+
 };
 
 #define PROFILE_ON
@@ -96,18 +126,25 @@ private:
 #ifdef PROFILE_ON
 #define PROFILE_BEGIN(x) Profiler::Instance().StartSession(x)
 #define PROFILE_END() Profiler::Instance().EndSession()
-#define PROFILE_FUNC(...) ScopeEvent __event__(__func__); __event__.AddArgs(__VA_ARGS__)
+#define PROFILE_FUNC(...) ScopeEvent __event__(__FUNCSIG__); __event__.AddArgs(__VA_ARGS__)
 #define PROFILE_SCOPE(x,...) ScopeEvent __event__(x); __event__.AddArgs(__VA_ARGS__)
+#define PROFILE_CUSTOM_ASYNC_START(x,...) Profiler::Instance().StartCustomAsyncEvent(x)->AddArgs(__VA_ARGS__)
+#define PROFILE_CUSTOM_ASYNC_END(x,...){ Profiler::Instance().GetCustomAsyncEvent(x)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomAsyncEvent(x);}
+
+#define PROFILE_CUSTOM_START(x,...) Profiler::Instance().StartCustomEvent(x)->AddArgs(__VA_ARGS__)
+#define PROFILE_CUSTOM_END(x,...) {Profiler::Instance().GetCustomEvent(x)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomEvent(x); }
 #define PROFILE_INSTANT(x,...) {InstantEvent __event__(x); __event__.AddArgs(__VA_ARGS__);}
 
 #else
 #define PROFILE_BEGIN(x)
 #define PROFILE_END()
-#define PROFILE_FUNC()
-#define PROFILE_SCOPE(x) 
-#define PROFILE_INSTANT(x)
+#define PROFILE_FUNC(...)
+#define PROFILE_SCOPE(x,...)
+#define PROFILE_CUSTOM_ASYNC_START(x,...)
+#define PROFILE_CUSTOM_ASYNC_END(x,...)
+
+#define PROFILE_CUSTOM_START(x,...)
+#define PROFILE_CUSTOM_END(x,...)
+#define PROFILE_INSTANT(x,...)
+
 #endif
-
-
-
-
