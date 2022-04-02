@@ -119,10 +119,8 @@ private:
 	std::queue< ProfileEventInfo> m_eventQueue; // List of events to write
 	std::mutex m_outstreamMutex; // Used to lock list of events to write
 	std::mutex m_asyncEventMapMutex; // Used to lock the map of async events
-	std::condition_variable m_waitCondition; // Synchronize the list of events
-
+	std::condition_variable m_waitCondition; // Synchronize the list of events};
 };
-
 #define PROFILE_ON
 
 #ifdef PROFILE_ON

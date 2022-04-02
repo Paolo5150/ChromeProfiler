@@ -204,7 +204,6 @@ void Profiler::ThreadJob(std::string sessionName)
 					m_outStream << ",\n";
 				}
 
-
 				m_outStream << "{";
 				m_outStream << "\"name\": \"" << info.EventName << "\",";
 				m_outStream << "\"cat\": \"" << info.Category << "\",";
