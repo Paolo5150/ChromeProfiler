@@ -9,6 +9,8 @@
 #include <condition_variable>
 #include <mutex>
 
+#define PROFILE_ON //Comment this out to disable all profiling
+
 struct ProfileEventInfo
 {
 	std::string EventName;
@@ -23,7 +25,6 @@ struct ProfileEventInfo
 	std::optional<long long> TimeDuration;
 	std::optional<char> Scope; // Used for instant event
 	std::optional<std::uintptr_t> Id; //Used for custom event
-
 };
 
 class ProfileEvent
@@ -78,7 +79,6 @@ private:
 	bool m_isAsync;
 };
 
-
 class InstantEvent : public ProfileEvent
 {
 public:
@@ -121,7 +121,6 @@ private:
 	std::mutex m_asyncEventMapMutex; // Used to lock the map of async events
 	std::condition_variable m_waitCondition; // Synchronize the list of events};
 };
-#define PROFILE_ON
 
 #ifdef PROFILE_ON
 #define PROFILE_BEGIN(fileName) Profiler::Instance().StartSession(fileName)
@@ -130,21 +129,17 @@ private:
 #define PROFILE_SCOPE(eventName,...) ScopeEvent __event__(eventName); __event__.AddArgs(__VA_ARGS__)
 #define PROFILE_CUSTOM_ASYNC_START(eventName,...) Profiler::Instance().StartCustomAsyncEvent(eventName)->AddArgs(__VA_ARGS__)
 #define PROFILE_CUSTOM_ASYNC_END(eventName,...){ Profiler::Instance().GetCustomAsyncEvent(eventName)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomAsyncEvent(eventName);}
-
 #define PROFILE_CUSTOM_START(eventName,...) Profiler::Instance().StartCustomEvent(eventName)->AddArgs(__VA_ARGS__)
 #define PROFILE_CUSTOM_END(eventName,...) {Profiler::Instance().GetCustomEvent(eventName)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomEvent(eventName); }
 #define PROFILE_INSTANT(eventName,...) {InstantEvent __event__(eventName); __event__.AddArgs(__VA_ARGS__);}
-
 #else
-#define PROFILE_BEGIN(x)
+#define PROFILE_BEGIN(fileName)
 #define PROFILE_END()
 #define PROFILE_FUNC(...)
-#define PROFILE_SCOPE(x,...)
-#define PROFILE_CUSTOM_ASYNC_START(x,...)
-#define PROFILE_CUSTOM_ASYNC_END(x,...)
-
-#define PROFILE_CUSTOM_START(x,...)
-#define PROFILE_CUSTOM_END(x,...)
-#define PROFILE_INSTANT(x,...)
-
+#define PROFILE_SCOPE(eventName,...)
+#define PROFILE_CUSTOM_ASYNC_START(eventName,...)
+#define PROFILE_CUSTOM_ASYNC_END(eventName,...)
+#define PROFILE_CUSTOM_START(eventName,...)
+#define PROFILE_CUSTOM_END(eventName,...)
+#define PROFILE_INSTANT(eventName,...)
 #endif
