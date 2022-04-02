@@ -33,6 +33,7 @@ public:
 	void AddArgs(Arguments &&...args)
 	{
 		int v[] = { 0, ((void)ForEach(std::forward<Arguments>(args)), 0) ... };
+		(void)v;
 	}
 
 protected:
@@ -44,7 +45,10 @@ private:
 	void ForEach(T t) {
 		if (m_counter % 2 == 0) //it's a key, cache
 		{
-			m_currentKey = t;
+			if constexpr (std::is_same_v<T, std::string>)
+			{
+				m_currentKey = t;
+			}
 		}
 		else //it's a value, push
 		{
@@ -56,8 +60,6 @@ private:
 	}
 	int m_counter = 0;
 	std::string m_currentKey;
-
-
 };
 
 class ScopeEvent : public ProfileEvent
@@ -124,16 +126,16 @@ private:
 #define PROFILE_ON
 
 #ifdef PROFILE_ON
-#define PROFILE_BEGIN(x) Profiler::Instance().StartSession(x)
+#define PROFILE_BEGIN(fileName) Profiler::Instance().StartSession(fileName)
 #define PROFILE_END() Profiler::Instance().EndSession()
 #define PROFILE_FUNC(...) ScopeEvent __event__(__FUNCSIG__); __event__.AddArgs(__VA_ARGS__)
-#define PROFILE_SCOPE(x,...) ScopeEvent __event__(x); __event__.AddArgs(__VA_ARGS__)
-#define PROFILE_CUSTOM_ASYNC_START(x,...) Profiler::Instance().StartCustomAsyncEvent(x)->AddArgs(__VA_ARGS__)
-#define PROFILE_CUSTOM_ASYNC_END(x,...){ Profiler::Instance().GetCustomAsyncEvent(x)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomAsyncEvent(x);}
+#define PROFILE_SCOPE(eventName,...) ScopeEvent __event__(eventName); __event__.AddArgs(__VA_ARGS__)
+#define PROFILE_CUSTOM_ASYNC_START(eventName,...) Profiler::Instance().StartCustomAsyncEvent(eventName)->AddArgs(__VA_ARGS__)
+#define PROFILE_CUSTOM_ASYNC_END(eventName,...){ Profiler::Instance().GetCustomAsyncEvent(eventName)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomAsyncEvent(eventName);}
 
-#define PROFILE_CUSTOM_START(x,...) Profiler::Instance().StartCustomEvent(x)->AddArgs(__VA_ARGS__)
-#define PROFILE_CUSTOM_END(x,...) {Profiler::Instance().GetCustomEvent(x)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomEvent(x); }
-#define PROFILE_INSTANT(x,...) {InstantEvent __event__(x); __event__.AddArgs(__VA_ARGS__);}
+#define PROFILE_CUSTOM_START(eventName,...) Profiler::Instance().StartCustomEvent(eventName)->AddArgs(__VA_ARGS__)
+#define PROFILE_CUSTOM_END(eventName,...) {Profiler::Instance().GetCustomEvent(eventName)->AddArgs(__VA_ARGS__); Profiler::Instance().EndCustomEvent(eventName); }
+#define PROFILE_INSTANT(eventName,...) {InstantEvent __event__(eventName); __event__.AddArgs(__VA_ARGS__);}
 
 #else
 #define PROFILE_BEGIN(x)

@@ -109,8 +109,7 @@ int main()
 		// Ensure to use the same string for starting and ending
 		if(tickId == 1)
 			PROFILE_CUSTOM_ASYNC_START("Async Custom event");
-		if (tickId == 5)
-			PROFILE_CUSTOM_ASYNC_END("Async Custom event");
+
 
 	}
 	t.join();
