@@ -46,7 +46,7 @@ private:
 	void ForEach(T t) {
 		if (m_counter % 2 == 0) //it's a key, cache
 		{
-			if constexpr (std::is_same_v<T, std::string>)
+			if constexpr (std::is_same_v<std::decay<T>::type, std::string>)
 			{
 				m_currentKey = t;
 			}
