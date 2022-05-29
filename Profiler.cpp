@@ -97,6 +97,7 @@ Profiler::~Profiler()
 //Profiler
 void Profiler::StartSession(const std::string& sessionName, bool useInfoConsoleLogs)
 {
+	if (m_useInternalCommandLogs) std::cout << "PROFILER: Starting session " << sessionName << "\n";
 	m_useInternalCommandLogs = useInfoConsoleLogs;
 	// If a previos session was sterted, make sure to join the thread
 	if (m_thread)
@@ -216,7 +217,6 @@ void Profiler::ThreadJob(std::string sessionName)
 			m_eventQueue.pop();
 			l.unlock(); //Unlock queue
 
-			std::this_thread::sleep_for(std::chrono::milliseconds(5));
 			if(!m_threadRunning && m_useInternalCommandLogs)
 				std::cout << "PROFILER: Logs left " << m_eventQueue.size() << std::endl;
 
