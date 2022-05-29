@@ -23,6 +23,7 @@ All you have to use are on liners macro calls.
 
 ```
 PROFILE_BEGIN(name) Starts a profile session. Each session generates a json output file. Only 1 session can run at any time
+PROFILE_BEGIN_WLOGS(name) Starts a profile session just like the command above, with some extra logs from the profiler itself.
 PROFILE_END() Ends the session, closes out stream
 PROFILE_FUNC(...) Profile this function. Should be added as the very first call in a method. Arguments can be passed in as pairs key:string, value:primitive
 PROFILE_SCOPE(name,...) Profile this scope, using given name. Should be added as the very first call in a scope section. Accepts key,value args.
