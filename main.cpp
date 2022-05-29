@@ -40,6 +40,7 @@ int main()
 {
 	srand((unsigned)time(nullptr));
 	PROFILE_BEGIN("Profile");
+
 	InitFunction();
 
 	std::thread t([]() {

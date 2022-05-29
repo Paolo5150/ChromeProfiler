@@ -93,7 +93,7 @@ class Profiler
 public:
 	static Profiler& Instance();
 	~Profiler();
-	void StartSession(const std::string& sessionName = "Profile");
+	void StartSession(const std::string& sessionName = "Profile", bool useInfoConsoleLogs = false);
 	void EndSession();
 	void WriteInfo(const ProfileEventInfo& info);
 
@@ -115,6 +115,7 @@ private:
 	bool m_isSessionActive;
 	bool m_writeComma = false;
 	bool m_threadRunning = false;
+	bool m_useInternalCommandLogs = false;
 	std::unique_ptr<std::thread> m_thread; // Writing thread
 	std::queue< ProfileEventInfo> m_eventQueue; // List of events to write
 	std::mutex m_outstreamMutex; // Used to lock list of events to write
@@ -124,6 +125,7 @@ private:
 
 #ifdef PROFILE_ON
 #define PROFILE_BEGIN(fileName) Profiler::Instance().StartSession(fileName)
+#define PROFILE_BEGIN_WLOGS(fileName) Profiler::Instance().StartSession(fileName,true)
 #define PROFILE_END() Profiler::Instance().EndSession()
 #define PROFILE_FUNC(...) ScopeEvent __event__(__FUNCSIG__); __event__.AddArgs(__VA_ARGS__)
 #define PROFILE_SCOPE(eventName,...) ScopeEvent __event__(eventName); __event__.AddArgs(__VA_ARGS__)

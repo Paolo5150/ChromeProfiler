@@ -90,31 +90,45 @@ Profiler& Profiler::Instance()
 
 Profiler::~Profiler()
 {
-	if (m_thread)
-		m_thread->join();
+
 }
 
 
 //Profiler
-void Profiler::StartSession(const std::string& sessionName)
+void Profiler::StartSession(const std::string& sessionName, bool useInfoConsoleLogs)
 {
+	m_useInternalCommandLogs = useInfoConsoleLogs;
 	// If a previos session was sterted, make sure to join the thread
 	if (m_thread)
 	{
-		m_thread->join();
+		if(m_thread->joinable())
+			m_thread->join();
+
 		m_thread.reset();
 	}
 
 	m_threadRunning = true;
 	m_writeComma = false;
+	if (m_useInternalCommandLogs) std::cout << "PROFILER: Starting writing thread\n";
 	m_thread = std::make_unique<std::thread>(&Profiler::ThreadJob, this, sessionName);
 }
 
 void Profiler::EndSession()
 {
-	std::lock_guard l(m_outstreamMutex);
-	m_threadRunning = false;
-	m_waitCondition.notify_all();
+	if (m_useInternalCommandLogs) std::cout << "PROFILER: Ending session\n";
+
+	//Notify the thread we want to end the session
+	//Wrap in scope so the lock is released
+	{
+		std::lock_guard l(m_outstreamMutex);
+		m_threadRunning = false;
+		m_waitCondition.notify_all();
+	}
+	
+	if (m_useInternalCommandLogs) std::cout << "PROFILER: Writing remaining logs\n";
+	//Let the thread write the remaining logs
+	if (m_thread)
+		m_thread->join();
 }
 
 CustomEvent* Profiler::StartCustomAsyncEvent(const std::string& eventName)
@@ -193,53 +207,59 @@ void Profiler::ThreadJob(std::string sessionName)
 		if (m_isSessionActive)
 		{
 			std::unique_lock<std::mutex> l(m_outstreamMutex);
-			m_waitCondition.wait(l, [&] {return !m_eventQueue.empty()|| !m_threadRunning; });
+			m_waitCondition.wait(l, [&] {return !m_eventQueue.empty() || !m_threadRunning; });
 
-			while (!m_eventQueue.empty())
+			if (!m_threadRunning && m_eventQueue.empty()) break;
+			if (m_eventQueue.empty()) continue;
+
+			auto info = m_eventQueue.front();
+			m_eventQueue.pop();
+			l.unlock(); //Unlock queue
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			if(!m_threadRunning && m_useInternalCommandLogs)
+				std::cout << "PROFILER: Logs left " << m_eventQueue.size() << std::endl;
+
+			if (m_writeComma)
 			{
-				auto info = m_eventQueue.front();
-				m_eventQueue.pop();
-				if (m_writeComma)
+				m_outStream << ",\n";
+			}
+
+			m_outStream << "{";
+			m_outStream << "\"name\": \"" << info.EventName << "\",";
+			m_outStream << "\"cat\": \"" << info.Category << "\",";
+			m_outStream << "\"ph\": \"" << info.EventType << "\",";
+			m_outStream << "\"pid\": " << info.ProcessID << ",";
+			m_outStream << "\"tid\": " << info.ThreadID << ",";
+			m_outStream << "\"ts\": " << info.TimeStart;
+
+			if (info.Id.has_value())
+				m_outStream << ", \"id\": " << info.Id.value();
+
+			if (info.Scope.has_value())
+				m_outStream << ", \"s\": \"" << info.Scope.value() << "\"";
+
+			if (info.Args.size() > 0)
+			{
+				m_outStream << ",\"args\": {";
+
+				bool first = true;
+				for (auto it = info.Args.begin(); it != info.Args.end(); it++)
 				{
-					m_outStream << ",\n";
+					if (!first)
+						m_outStream << ",";
+					m_outStream << "\"" << it->first << "\": \"" << it->second << "\"";
+					first = false;
 				}
-
-				m_outStream << "{";
-				m_outStream << "\"name\": \"" << info.EventName << "\",";
-				m_outStream << "\"cat\": \"" << info.Category << "\",";
-				m_outStream << "\"ph\": \"" << info.EventType << "\",";
-				m_outStream << "\"pid\": " << info.ProcessID << ",";
-				m_outStream << "\"tid\": " << info.ThreadID << ",";
-				m_outStream << "\"ts\": " << info.TimeStart;
-
-				if (info.Id.has_value())
-					m_outStream << ", \"id\": " << info.Id.value();
-
-				if (info.Scope.has_value())
-					m_outStream << ", \"s\": \"" << info.Scope.value() << "\"";
-
-				if (info.Args.size() > 0)
-				{
-					m_outStream << ",\"args\": {";
-
-					bool first = true;
-					for (auto it = info.Args.begin(); it != info.Args.end(); it++)
-					{
-						if (!first)
-							m_outStream << ",";
-						m_outStream << "\"" << it->first << "\": \"" << it->second << "\"";
-						first = false;
-					}
-					m_outStream << "}";
-
-				}
-
 				m_outStream << "}";
 
-				m_writeComma = true;
-
-				m_outStream.flush();
 			}
+
+			m_outStream << "}";
+
+			m_writeComma = true;
+
+			m_outStream.flush();	
 		
 		}
 		else
@@ -247,7 +267,6 @@ void Profiler::ThreadJob(std::string sessionName)
 			m_outStream << "Error: no session was started!\n";
 		}			
 
-		if (!m_threadRunning && m_eventQueue.empty()) break;
 	}
 
 	m_isSessionActive = false;
