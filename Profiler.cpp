@@ -3,8 +3,6 @@
 #include <ctime>
 #include <iostream>
 
-std::unique_ptr<Profiler> Profiler::m_instance;
-
 //ScopeEvent
 ScopeEvent::ScopeEvent(const char* name)
 {
@@ -32,6 +30,9 @@ ScopeEvent::~ScopeEvent()
 	Profiler::Instance().WriteInfo(m_info);
 }
 
+
+
+
 // Custom event
 CustomEvent::CustomEvent(const char* name, bool async) : m_isAsync(async)
 {
@@ -39,7 +40,7 @@ CustomEvent::CustomEvent(const char* name, bool async) : m_isAsync(async)
 
 	m_info.Category = "Custom";
 	m_info.EventName = name;
-	m_info.EventType = async? 'b' : 'B';
+	m_info.EventType = async ? 'b' : 'B';
 	m_info.TimeStart = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
 	m_info.ProcessID = static_cast<uint32_t>(GetCurrentProcessId());
 	m_info.ThreadID = static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
@@ -102,7 +103,7 @@ void Profiler::StartSession(const std::string& sessionName, bool useInfoConsoleL
 	// If a previos session was sterted, make sure to join the thread
 	if (m_thread)
 	{
-		if(m_thread->joinable())
+		if (m_thread->joinable())
 			m_thread->join();
 
 		m_thread.reset();
@@ -125,7 +126,7 @@ void Profiler::EndSession()
 		m_threadRunning = false;
 		m_waitCondition.notify_all();
 	}
-	
+
 	if (m_useInternalCommandLogs) std::cout << "PROFILER: Writing remaining logs\n";
 	//Let the thread write the remaining logs
 	if (m_thread)
@@ -144,11 +145,12 @@ CustomEvent* Profiler::StartCustomAsyncEvent(const std::string& eventName)
 CustomEvent* Profiler::GetCustomAsyncEvent(const std::string& eventName)
 {
 	std::lock_guard l(m_asyncEventMapMutex);
-
 	if (m_customAsyncEvents.find(eventName) != m_customAsyncEvents.end())
+	{
 		return m_customAsyncEvents[eventName];
+	}
 
-	return nullptr;
+	throw std::runtime_error("Could not find async event!");
 }
 
 void Profiler::EndCustomAsyncEvent(const std::string& eventName)
@@ -187,7 +189,7 @@ void Profiler::EndCustomEvent(const std::string& eventName)
 	}
 }
 
-void Profiler::ThreadJob(std::string sessionName)
+void Profiler::ThreadJob(const std::string& sessionName)
 {
 	std::ofstream m_outStream;
 
@@ -217,7 +219,7 @@ void Profiler::ThreadJob(std::string sessionName)
 			m_eventQueue.pop();
 			l.unlock(); //Unlock queue
 
-			if(!m_threadRunning && m_useInternalCommandLogs)
+			if (!m_threadRunning && m_useInternalCommandLogs)
 				std::cout << "PROFILER: Logs left " << m_eventQueue.size() << std::endl;
 
 			if (m_writeComma)
@@ -258,14 +260,14 @@ void Profiler::ThreadJob(std::string sessionName)
 			m_outStream << "}";
 
 			m_writeComma = true;
+			
+			m_outStream.flush();
 
-			m_outStream.flush();	
-		
 		}
 		else
 		{
 			m_outStream << "Error: no session was started!\n";
-		}			
+		}
 
 	}
 
@@ -273,13 +275,13 @@ void Profiler::ThreadJob(std::string sessionName)
 	m_outStream << "]";
 	m_outStream.flush();
 
-	m_outStream.close();	
+	m_outStream.close();
 }
 
 
 void Profiler::WriteInfo(const ProfileEventInfo& info)
 {
 	std::unique_lock<std::mutex> l(m_outstreamMutex);
-	m_eventQueue.push(info);	
+	m_eventQueue.push(info);
 	m_waitCondition.notify_all();
 }
