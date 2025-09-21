@@ -11,7 +11,6 @@
 #include <iostream>
 #include <ctime>
 #include <Windows.h> //TODO: cross platform
-
 #define PROFILE_ON //Comment this out to disable all profiling
 
 struct ProfileEventInfo
@@ -21,8 +20,7 @@ struct ProfileEventInfo
 	uint32_t ProcessID;
 	uint32_t ThreadID;
 	char EventType;
-	long long TimeStart;
-	long long TimeEnd;
+	long long TimePoint;
 	std::map<std::string, std::string> Args;
 	std::optional<long long> TimeDuration;
 	std::optional<char> Scope; // Used for instant event
@@ -77,7 +75,7 @@ public:
 	CustomEvent(const char* name, bool async = false);
 	~CustomEvent();
 private:
-	bool m_isAsync;
+	bool m_isAsync = false;
 };
 
 class InstantEvent : public ProfileEvent
@@ -103,8 +101,8 @@ public:
 
 	void StartSession(const std::string& sessionName = "Profile", bool useInfoConsoleLogs = false)
 	{
-		if (m_useInternalCommandLogs) std::cout << "PROFILER: Starting session " << sessionName << "\n";
 		m_useInternalCommandLogs = useInfoConsoleLogs;
+		if (m_useInternalCommandLogs) std::cout << "PROFILER: Starting session " << sessionName << "\n";
 		// If a previos session was sterted, make sure to join the thread
 		if (m_thread)
 		{
@@ -143,7 +141,7 @@ public:
 	{
 		std::unique_lock<std::mutex> l(m_outstreamMutex);
 		m_eventQueue.push(info);
-		m_waitCondition.notify_all();
+		m_waitCondition.notify_one();
 	}
 
 	CustomEvent* StartCustomAsyncEvent(const std::string& eventName)
@@ -224,49 +222,52 @@ private:
 
 				if (!m_threadRunning && m_eventQueue.empty()) break;
 				if (m_eventQueue.empty()) continue;
-
-				auto info = m_eventQueue.front();
-				m_eventQueue.pop();
+				auto localQueue = std::move(m_eventQueue);
 				l.unlock(); //Unlock queue
-
-				if (!m_threadRunning && m_useInternalCommandLogs)
-					std::cout << "PROFILER: Logs left " << m_eventQueue.size() << std::endl;
-
-				if (m_writeComma)
-					m_outStream << ",\n";
-
-				m_outStream << "{";
-				m_outStream << "\"name\": \"" << info.EventName << "\",";
-				m_outStream << "\"cat\": \"" << info.Category << "\",";
-				m_outStream << "\"ph\": \"" << info.EventType << "\",";
-				m_outStream << "\"pid\": " << info.ProcessID << ",";
-				m_outStream << "\"tid\": " << info.ThreadID << ",";
-				m_outStream << "\"ts\": " << info.TimeStart;
-
-				if (info.Id.has_value())
-					m_outStream << ", \"id\": " << info.Id.value();
-
-				if (info.Scope.has_value())
-					m_outStream << ", \"s\": \"" << info.Scope.value() << "\"";
-
-				if (info.Args.size() > 0)
+				while (!localQueue.empty())
 				{
-					m_outStream << ",\"args\": {";
+					auto info = localQueue.front();
+					localQueue.pop();
 
-					bool first = true;
-					for (auto it = info.Args.begin(); it != info.Args.end(); it++)
+					if (!m_threadRunning && m_useInternalCommandLogs)
+						std::cout << "PROFILER: Logs left " << localQueue.size() << std::endl;
+
+					if (m_writeComma)
+						m_outStream << ",\n";
+
+					m_outStream << "{";
+					m_outStream << "\"name\": \"" << info.EventName << "\",";
+					m_outStream << "\"cat\": \"" << info.Category << "\",";
+					m_outStream << "\"ph\": \"" << info.EventType << "\",";
+					m_outStream << "\"pid\": " << info.ProcessID << ",";
+					m_outStream << "\"tid\": " << info.ThreadID << ",";
+					m_outStream << "\"ts\": " << info.TimePoint;
+
+					if (info.Id.has_value())
+						m_outStream << ", \"id\": " << info.Id.value();
+
+					if (info.Scope.has_value())
+						m_outStream << ", \"s\": \"" << info.Scope.value() << "\"";
+
+					if (info.Args.size() > 0)
 					{
-						if (!first)
-							m_outStream << ",";
-						m_outStream << "\"" << it->first << "\": \"" << it->second << "\"";
-						first = false;
-					}
-					m_outStream << "}";
-				}
+						m_outStream << ",\"args\": {";
 
-				m_outStream << "}";
-				m_writeComma = true;
-				m_outStream.flush();
+						bool first = true;
+						for (auto it = info.Args.begin(); it != info.Args.end(); it++)
+						{
+							if (!first)
+								m_outStream << ",";
+							m_outStream << "\"" << it->first << "\": \"" << it->second << "\"";
+							first = false;
+						}
+						m_outStream << "}";
+					}
+
+					m_outStream << "}";
+					m_writeComma = true;
+					m_outStream.flush();
+				}
 			}
 			else
 				m_outStream << "Error: no session was started!\n";
@@ -278,7 +279,7 @@ private:
 		m_outStream.close();
 	}
 
-	bool m_isSessionActive;
+	bool m_isSessionActive = false;
 	bool m_writeComma = false;
 	bool m_threadRunning = false;
 	bool m_useInternalCommandLogs = false;
@@ -299,7 +300,7 @@ public:
 		m_info.Category = "Scope";
 		m_info.EventName = name;
 		m_info.EventType = 'B';
-		m_info.TimeStart = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
+		m_info.TimePoint = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
 		m_info.ProcessID = static_cast<uint32_t>(GetCurrentProcessId());
 		m_info.ThreadID = static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 
@@ -311,7 +312,7 @@ public:
 
 		m_info.Category = "Scope";
 		m_info.EventType = 'E';
-		m_info.TimeStart = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
+		m_info.TimePoint = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
 		m_info.ProcessID = static_cast<uint32_t>(GetCurrentProcessId());
 		m_info.ThreadID = static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 		Profiler::Instance().WriteInfo(m_info);
@@ -326,7 +327,7 @@ inline CustomEvent::CustomEvent(const char* name, bool async) : m_isAsync(async)
 	m_info.Category = "Custom";
 	m_info.EventName = name;
 	m_info.EventType = async ? 'b' : 'B';
-	m_info.TimeStart = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
+	m_info.TimePoint = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
 	m_info.ProcessID = static_cast<uint32_t>(GetCurrentProcessId());
 	m_info.ThreadID = static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 	m_info.Id = reinterpret_cast<std::uintptr_t>(this);
@@ -340,7 +341,7 @@ inline CustomEvent::~CustomEvent()
 
 	m_info.Category = "Custom";
 	m_info.EventType = m_isAsync ? 'e' : 'E';
-	m_info.TimeStart = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
+	m_info.TimePoint = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
 	m_info.ProcessID = static_cast<uint32_t>(GetCurrentProcessId());
 	m_info.ThreadID = static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 	Profiler::Instance().WriteInfo(m_info);
@@ -357,10 +358,9 @@ inline InstantEvent::InstantEvent(const char* name)
 
 	m_info.ProcessID = static_cast<uint32_t>(GetCurrentProcessId());
 	m_info.ThreadID = static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
-	m_info.TimeStart = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
+	m_info.TimePoint = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
 	m_info.Scope = 't'; //Default is thread scope
 }
-
 
 inline InstantEvent::~InstantEvent()
 {
